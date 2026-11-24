@@ -1,0 +1,249 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #f5f6f8;
+  color: #1f2937;
+  line-height: 1.5;
+}
+
+.container {
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 20px 16px;
+}
+
+.navbar {
+  background: #1e3a5f;
+  color: #ffffff;
+}
+
+.nav-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+}
+
+.brand {
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 1.15rem;
+  text-decoration: none;
+}
+
+.nav-links {
+  display: flex;
+  gap: 18px;
+}
+
+.nav-links a {
+  color: #e5e7eb;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.nav-links a:hover {
+  color: #ffffff;
+}
+
+h1 {
+  margin-top: 0;
+  font-size: 1.6rem;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.event-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 18px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 14px;
+  gap: 12px;
+}
+
+.price {
+  font-weight: 700;
+  color: #1e3a5f;
+  white-space: nowrap;
+}
+
+.meta {
+  color: #4b5563;
+  font-size: 0.92rem;
+  margin: 6px 0 10px;
+}
+
+.seats {
+  font-size: 0.92rem;
+  color: #065f46;
+  font-weight: 600;
+}
+
+.badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.badge-soldout,
+.badge-failed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.badge-confirmed {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.badge-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.badge-cancelled,
+.badge-refunded {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.btn {
+  display: inline-block;
+  padding: 8px 14px;
+  border-radius: 5px;
+  border: 1px solid #9ca3af;
+  background: #ffffff;
+  color: #1f2937;
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: #1e3a5f;
+  border-color: #1e3a5f;
+  color: #ffffff;
+}
+
+.btn-danger {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #ffffff;
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 12px;
+  color: #1e3a5f;
+  text-decoration: none;
+}
+
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.form-stack label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 500;
+  font-size: 0.92rem;
+}
+
+input,
+select {
+  padding: 8px 10px;
+  border: 1px solid #9ca3af;
+  border-radius: 5px;
+  font-size: 0.95rem;
+}
+
+.payment-box {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.search-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.search-row input {
+  flex: 1;
+}
+
+.cancel-box {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.refund-rule {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #4b5563;
+}
+
+.error {
+  color: #b91c1c;
+  font-weight: 500;
+}
+
+.success-msg {
+  color: #065f46;
+  background: #d1fae5;
+  padding: 10px 12px;
+  border-radius: 5px;
+}
