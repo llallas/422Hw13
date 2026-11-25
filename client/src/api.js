@@ -1,9 +1,14 @@
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4242";
 
 async function handleResponse(res) {
-  const data = await res.json();
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    data = null;
+  }
   if (!res.ok) {
-    throw new Error(data.error || "Request failed");
+    throw new Error(data?.error || `Request failed (${res.status})`);
   }
   return data;
 }

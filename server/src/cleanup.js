@@ -27,17 +27,17 @@ export async function releaseExpiredPending(stripe) {
             where: { id: reg.id },
             data: { status: "CONFIRMED" },
           });
-        } else {
+        } else if (pi.status === "canceled") {
           await prisma.registration.update({
             where: { id: reg.id },
             data: { status: "CANCELLED" },
           });
         }
-      } catch {
-        await prisma.registration.update({
-          where: { id: reg.id },
-          data: { status: "CANCELLED" },
-        });
+      } catch (retrieveErr) {
+        console.error(
+          `Could not reconcile pending registration ${reg.id}:`,
+          retrieveErr.message,
+        );
       }
     }
   }

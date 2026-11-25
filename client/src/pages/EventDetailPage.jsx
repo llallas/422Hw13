@@ -14,7 +14,11 @@ import {
   getEvent,
 } from "../api.js";
 
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
+const publishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+const stripePromise =
+  publishableKey && !publishableKey.includes("your_test")
+    ? loadStripe(publishableKey)
+    : null;
 
 function CheckoutForm({ registrationId, totalCents }) {
   const stripe = useStripe();
@@ -175,14 +179,21 @@ export default function EventDetailPage() {
         )}
 
         {checkoutData && (
-          <Elements
-            stripe={stripePromise}
-            options={{ clientSecret: checkoutData.clientSecret }}>
-            <CheckoutForm
-              registrationId={checkoutData.registrationId}
-              totalCents={event.priceCents * quantity}
-            />
-          </Elements>
+          stripePromise ? (
+            <Elements
+              stripe={stripePromise}
+              options={{ clientSecret: checkoutData.clientSecret }}>
+              <CheckoutForm
+                registrationId={checkoutData.registrationId}
+                totalCents={event.priceCents * quantity}
+              />
+            </Elements>
+          ) : (
+            <p className="error">
+              Stripe is not configured. Add VITE_STRIPE_PUBLISHABLE_KEY to the
+              client environment and restart the app.
+            </p>
+          )
         )}
       </div>
     </div>

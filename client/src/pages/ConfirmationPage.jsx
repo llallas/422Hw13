@@ -101,7 +101,11 @@ export default function ConfirmationPage() {
     );
   }
 
-  if (registration.status === "FAILED" || registration.status === "CANCELLED") {
+  if (
+    registration.status === "FAILED" ||
+    registration.status === "CANCELLED" ||
+    registration.status === "REFUNDED"
+  ) {
     return (
       <div className="card">
         <span className="badge badge-failed">{registration.status}</span>

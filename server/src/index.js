@@ -6,8 +6,28 @@ import { prisma } from "./db.js";
 import { getSeatsLeft, releaseExpiredPending } from "./cleanup.js";
 
 const app = express();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const stripeConfigured =
+  Boolean(stripeSecretKey) &&
+  !stripeSecretKey.includes("your_test") &&
+  stripeSecretKey.startsWith("sk_");
+const stripe = stripeConfigured ? new Stripe(stripeSecretKey) : null;
 const PORT = process.env.PORT || 4242;
+let checkoutQueue = Promise.resolve();
+
+async function withCheckoutLock(action) {
+  const previous = checkoutQueue;
+  let release;
+  checkoutQueue = new Promise((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    return await action();
+  } finally {
+    release();
+  }
+}
 
 app.use(
   cors({
@@ -15,10 +35,21 @@ app.use(
   }),
 );
 
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "ok",
+    database: Boolean(process.env.DATABASE_URL),
+    stripe: stripeConfigured,
+  });
+});
+
 app.post(
   "/api/webhook",
   express.raw({ type: "application/json" }),
   async (req, res) => {
+    if (!stripe) {
+      return res.status(503).send("Stripe is not configured");
+    }
     const signature = req.headers["stripe-signature"];
     let event;
 
@@ -73,7 +104,7 @@ app.use(express.json());
 
 app.get("/api/events", async (req, res) => {
   try {
-    await releaseExpiredPending(stripe);
+    if (stripe) await releaseExpiredPending(stripe);
     const events = await prisma.event.findMany({
       where: {
         startsAt: { gt: new Date() },
@@ -82,10 +113,22 @@ app.get("/api/events", async (req, res) => {
     });
 
     const withSeats = await Promise.all(
-      events.map(async (ev) => ({
-        ...ev,
-        seatsLeft: await getSeatsLeft(ev.id, ev.capacity, stripe),
-      })),
+      events.map(async (ev) => {
+        if (stripe) {
+          return {
+            ...ev,
+            seatsLeft: await getSeatsLeft(ev.id, ev.capacity, stripe),
+          };
+        }
+        const result = await prisma.registration.aggregate({
+          _sum: { quantity: true },
+          where: { eventId: ev.id, status: "CONFIRMED" },
+        });
+        return {
+          ...ev,
+          seatsLeft: Math.max(0, ev.capacity - (result._sum.quantity || 0)),
+        };
+      }),
     );
 
     res.json(withSeats);
@@ -107,7 +150,21 @@ app.get("/api/events/:id", async (req, res) => {
       return res.status(404).json({ error: "Event not found" });
     }
 
-    const seatsLeft = await getSeatsLeft(event.id, event.capacity, stripe);
+    const seatsLeft = stripe
+      ? await getSeatsLeft(event.id, event.capacity, stripe)
+      : Math.max(
+          0,
+          event.capacity -
+            (
+              await prisma.registration.aggregate({
+                _sum: { quantity: true },
+                where: {
+                  eventId: event.id,
+                  status: "CONFIRMED",
+                },
+              })
+            )._sum.quantity || 0,
+        );
     res.json({ ...event, seatsLeft });
   } catch (err) {
     console.error(err);
@@ -136,64 +193,77 @@ app.post("/api/events/:id/payment-intent", async (req, res) => {
   if (!Number.isInteger(qty) || qty < 1 || qty > 4) {
     return res.status(400).json({ error: "Quantity must be between 1 and 4" });
   }
+  if (!stripe) {
+    return res.status(503).json({ error: "Stripe is not configured" });
+  }
 
   try {
-    const event = await prisma.event.findUnique({ where: { id } });
-    if (!event) {
-      return res.status(404).json({ error: "Event not found" });
-    }
+    const result = await withCheckoutLock(async () => {
+      const event = await prisma.event.findUnique({ where: { id } });
+      if (!event) {
+        return { status: 404, body: { error: "Event not found" } };
+      }
 
-    if (new Date(event.startsAt) <= new Date()) {
-      return res.status(400).json({ error: "Event has already started" });
-    }
+      if (new Date(event.startsAt) <= new Date()) {
+        return { status: 400, body: { error: "Event has already started" } };
+      }
 
-    const seatsLeft = await getSeatsLeft(event.id, event.capacity, stripe);
-    if (seatsLeft < qty) {
-      return res.status(400).json({ error: "Not enough seats remaining" });
-    }
+      const seatsLeft = await getSeatsLeft(event.id, event.capacity, stripe);
+      if (seatsLeft < qty) {
+        return { status: 400, body: { error: "Not enough seats remaining" } };
+      }
 
-    const totalCents = event.priceCents * qty;
+      const totalCents = event.priceCents * qty;
 
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: totalCents,
-      currency: "usd",
-      automatic_payment_methods: { enabled: true },
-      receipt_email: cleanEmail,
-      metadata: {
-        eventId: String(event.id),
-        quantity: String(qty),
-      },
-    });
-
-    let registration;
-    try {
-      registration = await prisma.registration.create({
-        data: {
-          eventId: event.id,
-          attendeeName: cleanName,
-          attendeeEmail: cleanEmail,
-          quantity: qty,
-          totalCents,
-          status: "PENDING",
-          paymentIntentId: paymentIntent.id,
-        },
-      });
-
-      await stripe.paymentIntents.update(paymentIntent.id, {
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: totalCents,
+        currency: "usd",
+        automatic_payment_methods: { enabled: true },
+        receipt_email: cleanEmail,
         metadata: {
-          registrationId: String(registration.id),
           eventId: String(event.id),
+          quantity: String(qty),
         },
       });
-    } catch (dbErr) {
-      await stripe.paymentIntents.cancel(paymentIntent.id);
-      throw dbErr;
-    }
 
-    res.status(201).json({
-      clientSecret: paymentIntent.client_secret,
-      registrationId: registration.id,
+      let registration;
+      try {
+        registration = await prisma.registration.create({
+          data: {
+            eventId: event.id,
+            attendeeName: cleanName,
+            attendeeEmail: cleanEmail,
+            quantity: qty,
+            totalCents,
+            status: "PENDING",
+            paymentIntentId: paymentIntent.id,
+          },
+        });
+
+        await stripe.paymentIntents.update(paymentIntent.id, {
+          metadata: {
+            registrationId: String(registration.id),
+            eventId: String(event.id),
+          },
+        });
+      } catch (dbErr) {
+        await stripe.paymentIntents.cancel(paymentIntent.id);
+        throw dbErr;
+      }
+
+      return {
+        status: 201,
+        body: {
+          clientSecret: paymentIntent.client_secret,
+          registrationId: registration.id,
+        },
+      };
     });
+
+    if (result.status !== 201) {
+      return res.status(result.status).json(result.body);
+    }
+    return res.status(201).json(result.body);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Could not start checkout" });
@@ -210,7 +280,7 @@ app.get("/api/registrations", async (req, res) => {
   }
 
   try {
-    await releaseExpiredPending(stripe);
+    if (stripe) await releaseExpiredPending(stripe);
     const registrations = await prisma.registration.findMany({
       where: { attendeeEmail: email },
       include: { event: true },
@@ -231,7 +301,7 @@ app.get("/api/registrations/:id", async (req, res) => {
   }
 
   try {
-    await releaseExpiredPending(stripe);
+    if (stripe) await releaseExpiredPending(stripe);
     const registration = await prisma.registration.findUnique({
       where: { id },
       include: { event: true },
@@ -253,6 +323,9 @@ app.post("/api/registrations/:id/cancel", async (req, res) => {
   if (!Number.isInteger(id)) {
     return res.status(400).json({ error: "Invalid registration id" });
   }
+  if (!stripe) {
+    return res.status(503).json({ error: "Stripe is not configured" });
+  }
 
   try {
     const registration = await prisma.registration.findUnique({
@@ -268,6 +341,12 @@ app.post("/api/registrations/:id/cancel", async (req, res) => {
       return res
         .status(400)
         .json({ error: "Only confirmed registrations can be cancelled" });
+    }
+
+    if (new Date(registration.event.startsAt).getTime() <= Date.now()) {
+      return res
+        .status(400)
+        .json({ error: "Registrations cannot be cancelled after the event has started" });
     }
 
     const hoursUntilStart =
@@ -301,9 +380,11 @@ app.post("/api/registrations/:id/cancel", async (req, res) => {
   }
 });
 
-setInterval(() => {
-  releaseExpiredPending(stripe).catch((err) => console.error(err));
-}, 60 * 1000);
+if (stripe) {
+  setInterval(() => {
+    releaseExpiredPending(stripe).catch((err) => console.error(err));
+  }, 60 * 1000);
+}
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
